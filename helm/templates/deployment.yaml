@@ -1,0 +1,48 @@
+  apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8smutatingwebhook-deployment
+  namespace: default
+  labels:
+    app: k8smutatingwebhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8smutatingwebhook
+  template:
+    metadata:
+      labels:
+        app: k8smutatingwebhook
+    spec:
+      containers:
+      - name: k8smutatingwebhook
+        image: "registry.kub.lab/public/k8smutatingwebhook"
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5001
+          name: https
+        volumeMounts:
+        - name: cm-volume
+          mountPath: /app/appsettings.json
+          subPath: appsettings.json
+          readOnly: true
+        resources:
+          limits:
+            memory: 512Mi
+            cpu: "1"
+          requests:
+            memory: 256Mi
+            cpu: "0.2"
+        envFrom:
+        - configMapRef:
+            name: k8smutatingwebhook-cm
+      imagePullSecrets:
+      - name: regcred
+      volumes:
+        - name: cm-volume
+          configMap:
+            name: k8smutatingwebhook-cm
+            items:
+            - key: appsettings.json
+              path: appsettings.json

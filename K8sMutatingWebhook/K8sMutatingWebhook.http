@@ -1,0 +1,6 @@
+@K8sMutatingWebhook_HostAddress = http://localhost:5299
+
+GET {{K8sMutatingWebhook_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

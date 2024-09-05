@@ -1,0 +1,20 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: ingress-annotations-webhook
+webhooks:
+  - name: ingress.annotations.mutate.k8s.io
+    rules:
+      - apiGroups: ["networking.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["ingresses"]
+    clientConfig:
+      service:
+        name: k8smutatingwebhook-service
+        namespace: default
+        path: "/mutate-ingress"
+      caBundle: BASE64_OF_CA_ROOT
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 5
