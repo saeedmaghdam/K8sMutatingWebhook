@@ -10,6 +10,11 @@ string[][] RequiredAnnotations = new[]
     new[] {"nginx.ingress.kubernetes.io/auth-tls-pass-certificate-to-upstream", "true"}
 };
 
+string[] HostsToSkip = new[]
+{
+    "registry.kub.lab"
+};
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -29,7 +34,39 @@ app.MapPost("/mutate-ingress", ([FromBody] JsonElement admissionReviewRequest) =
 {
     app.Logger.LogInformation("Received request to mutate ingress object, admissionReviewRequest: {admissionReviewRequest}", admissionReviewRequest.ToString());
     var requestUid = admissionReviewRequest.GetProperty("request").GetProperty("uid").GetString();
+    var kind = admissionReviewRequest.GetProperty("request").GetProperty("kind").GetProperty("kind").GetString();
+    if (kind != "Ingress")
+    {
+        app.Logger.LogInformation("Request kind is not Ingress, skipping");
+        return Results.Ok(new
+        {
+            apiVersion = "admission.k8s.io/v1",
+            kind = "AdmissionReview",
+            response = new
+            {
+                uid = requestUid,
+                allowed = true
+            }
+        });
+    }
+
     var ingress = admissionReviewRequest.GetProperty("request").GetProperty("object");
+
+    var hosts = ingress.GetProperty("spec").GetProperty("rules").EnumerateArray().SelectMany(rule => rule.GetProperty("host").GetString().Split(","));
+    if (hosts.Any(host => HostsToSkip.Contains(host)))
+    {
+        app.Logger.LogInformation("Ingress hosts contain registry.kub.lab, skipping");
+        return Results.Ok(new
+        {
+            apiVersion = "admission.k8s.io/v1",
+            kind = "AdmissionReview",
+            response = new
+            {
+                uid = requestUid,
+                allowed = true
+            }
+        });
+    }
 
     var annotationsElement = ingress.GetProperty("metadata").TryGetProperty("annotations", out var annotations)
         ? annotations
