@@ -22,7 +22,7 @@ WORKDIR /app
 
 ENV ASPNETCORE_URLS=https://+:5001
 ENV ASPNETCORE_HTTPS_PORT=5001
-ENV ASPNETCORE_Kestrel__Certificates__Default__Password=PFX_PASSWORD
+ENV ASPNETCORE_Kestrel__Certificates__Default__Password=Hello#rt
 ENV ASPNETCORE_Kestrel__Certificates__Default__Path=/app/certs/s3d-k8s-svc-default-k8smutatingwebhook-service-server.pfx
 
 COPY --from=publish /app/publish .

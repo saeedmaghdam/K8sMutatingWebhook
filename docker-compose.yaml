@@ -1,0 +1,8 @@
+version: '3.7'
+
+services:
+  service:
+    image: registry.kub.lab/public/k8smutatingwebhook:latest
+    build:
+      context: ./
+      dockerfile: ./K8sMutatingWebhook/Dockerfile

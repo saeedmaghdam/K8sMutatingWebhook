@@ -18,7 +18,6 @@ string[] HostsToSkip = new[]
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -76,11 +75,27 @@ app.MapPost("/mutate-ingress", ([FromBody] JsonElement admissionReviewRequest) =
     var annotationsDict = annotations.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString());
     app.Logger.LogInformation("AnnotationsDict: {annotationsDict}", annotationsDict);
 
+    // Ensure required annotations with fallback logic
+    if (!annotationsDict.ContainsKey("nginx.ingress.kubernetes.io/auth-tls-verify-client") ||
+        (annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-client"] != "on" && annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-client"] != "optional_no_ca"))
+    {
+        annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-client"] = "on"; // Default to "on"
+    }
+
     foreach (var annotation in RequiredAnnotations)
     {
         if (!annotationsDict.ContainsKey(annotation[0]))
+        {
             annotationsDict[annotation[0]] = annotation[1];
+        }
     }
+
+    // Ensure minimum depth of 1
+    if (!annotationsDict.ContainsKey("nginx.ingress.kubernetes.io/auth-tls-verify-depth") || int.Parse(annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-depth"]!) < 1)
+    {
+        annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-depth"] = "1";
+    }
+
     app.Logger.LogInformation("AnnotationsDict after adding missing annotations: {annotationsDict}", annotationsDict);
 
     var patch = new[]
