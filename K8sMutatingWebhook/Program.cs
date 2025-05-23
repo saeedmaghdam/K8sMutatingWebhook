@@ -47,55 +47,62 @@ app.MapPost("/mutate-ingress", ([FromBody] JsonElement admissionReviewRequest) =
         });
     }
 
-    var ingress = admissionReviewRequest.GetProperty("request").GetProperty("object");
-
-    // Extract annotations first to check for skip annotation
+    var ingress = admissionReviewRequest.GetProperty("request").GetProperty("object");    // Extract annotations first to check for skip annotation
     var annotationsElement = ingress.GetProperty("metadata").TryGetProperty("annotations", out var annotations)
         ? annotations
         : JsonDocument.Parse("{}").RootElement;
     app.Logger.LogInformation("Annotations: {annotations}", annotations.ToString());
-
     var annotationsDict = annotations.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString());
-    app.Logger.LogInformation("AnnotationsDict: {annotationsDict}", annotationsDict);    // Check if we should skip based on annotation
+    app.Logger.LogInformation("AnnotationsDict: {annotationsDict}", annotationsDict);
+    
+    // Check if we should skip based on annotation
+    bool skipClientCertEnforcement = false;
     if (annotationsDict.TryGetValue(SkipClientCertAnnotation, out var skipValue) &&
-        !string.IsNullOrEmpty(skipValue) &&
-        (skipValue.Equals("true", StringComparison.OrdinalIgnoreCase) || skipValue == "1"))
+        !string.IsNullOrEmpty(skipValue))
     {
-        app.Logger.LogInformation($"Skipping client certificate enforcement due to {SkipClientCertAnnotation} annotation");
-        return Results.Ok(new
+        skipClientCertEnforcement = skipValue.Equals("true", StringComparison.OrdinalIgnoreCase) || skipValue == "1";
+    }
+
+    if (skipClientCertEnforcement)
+    {
+        app.Logger.LogInformation($"Removing client certificate annotations due to {SkipClientCertAnnotation}=true annotation");
+        
+        // Remove client certificate annotations if they exist
+        foreach (var annotation in RequiredAnnotations)
         {
-            apiVersion = "admission.k8s.io/v1",
-            kind = "AdmissionReview",
-            response = new
+            if (annotationsDict.ContainsKey(annotation[0]))
             {
-                uid = requestUid,
-                allowed = true
+                annotationsDict.Remove(annotation[0]);
             }
-        });
+        }
     }
-
-    // Ensure required annotations with fallback logic
-    if (!annotationsDict.ContainsKey("nginx.ingress.kubernetes.io/auth-tls-verify-client") ||
-        (annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-client"] != "on" && annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-client"] != "optional_no_ca"))
+    else
     {
-        annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-client"] = "on"; // Default to "on"
-    }
-
-    foreach (var annotation in RequiredAnnotations)
-    {
-        if (!annotationsDict.ContainsKey(annotation[0]))
+        app.Logger.LogInformation($"Adding client certificate annotations as {SkipClientCertAnnotation} is not true");
+        
+        // Ensure required annotations with fallback logic
+        if (!annotationsDict.ContainsKey("nginx.ingress.kubernetes.io/auth-tls-verify-client") ||
+            (annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-client"] != "on" && annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-client"] != "optional_no_ca"))
         {
-            annotationsDict[annotation[0]] = annotation[1];
+            annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-client"] = "on"; // Default to "on"
+        }
+
+        foreach (var annotation in RequiredAnnotations)
+        {
+            if (!annotationsDict.ContainsKey(annotation[0]))
+            {
+                annotationsDict[annotation[0]] = annotation[1];
+            }
+        }
+
+        // Ensure minimum depth of 1
+        if (!annotationsDict.ContainsKey("nginx.ingress.kubernetes.io/auth-tls-verify-depth") || int.Parse(annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-depth"]!) < 1)
+        {
+            annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-depth"] = "1";
         }
     }
 
-    // Ensure minimum depth of 1
-    if (!annotationsDict.ContainsKey("nginx.ingress.kubernetes.io/auth-tls-verify-depth") || int.Parse(annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-depth"]!) < 1)
-    {
-        annotationsDict["nginx.ingress.kubernetes.io/auth-tls-verify-depth"] = "1";
-    }
-
-    app.Logger.LogInformation("AnnotationsDict after adding missing annotations: {annotationsDict}", annotationsDict);
+    app.Logger.LogInformation("AnnotationsDict after modifications: {annotationsDict}", annotationsDict);
 
     var patch = new[]
     {

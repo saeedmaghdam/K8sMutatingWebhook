@@ -12,8 +12,9 @@ When a new Ingress resource is created or an existing one is updated, this webho
 
 1. Intercepts the request to create/update an Ingress resource
 2. Checks if the Ingress has the special annotation to skip client certificate authentication
-3. If not, adds all required NGINX annotations for client certificate authentication
-4. Returns the modified Ingress object to the Kubernetes API server
+3. If the skip annotation is set to "true", it removes any existing client certificate annotations
+4. If the skip annotation doesn't exist or is set to "false", it adds all required client certificate annotations
+5. Returns the modified Ingress object to the Kubernetes API server
 
 ## Required Annotations
 
@@ -39,6 +40,12 @@ If you need to expose an Ingress publicly without client certificate authenticat
 ```yaml
 k8s-mutating-webhook/skip-client-cert: "true"
 ```
+
+When this annotation is set to "true":
+- If the Ingress already has client certificate annotations, they will be removed
+- If the Ingress is new, no client certificate annotations will be added
+
+If this annotation is set to "false" or not present, all required client certificate annotations will be added automatically.
 
 Example Ingress with skip annotation:
 
