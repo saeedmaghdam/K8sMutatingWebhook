@@ -10,10 +10,8 @@ string[][] RequiredAnnotations = new[]
     new[] {"nginx.ingress.kubernetes.io/auth-tls-pass-certificate-to-upstream", "true"}
 };
 
-string[] HostsToSkip = new[]
-{
-    "registry.kub.lab"
-};
+// Annotation name to check for skipping client certificate authentication
+const string SkipClientCertAnnotation = "k8s-mutating-webhook/skip-client-cert";
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,10 +49,19 @@ app.MapPost("/mutate-ingress", ([FromBody] JsonElement admissionReviewRequest) =
 
     var ingress = admissionReviewRequest.GetProperty("request").GetProperty("object");
 
-    var hosts = ingress.GetProperty("spec").GetProperty("rules").EnumerateArray().SelectMany(rule => rule.GetProperty("host").GetString().Split(","));
-    if (hosts.Any(host => HostsToSkip.Contains(host)))
+    // Extract annotations first to check for skip annotation
+    var annotationsElement = ingress.GetProperty("metadata").TryGetProperty("annotations", out var annotations)
+        ? annotations
+        : JsonDocument.Parse("{}").RootElement;
+    app.Logger.LogInformation("Annotations: {annotations}", annotations.ToString());
+
+    var annotationsDict = annotations.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString());
+    app.Logger.LogInformation("AnnotationsDict: {annotationsDict}", annotationsDict);    // Check if we should skip based on annotation
+    if (annotationsDict.TryGetValue(SkipClientCertAnnotation, out var skipValue) &&
+        !string.IsNullOrEmpty(skipValue) &&
+        (skipValue.Equals("true", StringComparison.OrdinalIgnoreCase) || skipValue == "1"))
     {
-        app.Logger.LogInformation("Ingress hosts contain registry.kub.lab, skipping");
+        app.Logger.LogInformation($"Skipping client certificate enforcement due to {SkipClientCertAnnotation} annotation");
         return Results.Ok(new
         {
             apiVersion = "admission.k8s.io/v1",
@@ -66,14 +73,6 @@ app.MapPost("/mutate-ingress", ([FromBody] JsonElement admissionReviewRequest) =
             }
         });
     }
-
-    var annotationsElement = ingress.GetProperty("metadata").TryGetProperty("annotations", out var annotations)
-        ? annotations
-        : JsonDocument.Parse("{}").RootElement;
-    app.Logger.LogInformation("Annotations: {annotations}", annotations.ToString());
-
-    var annotationsDict = annotations.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString());
-    app.Logger.LogInformation("AnnotationsDict: {annotationsDict}", annotationsDict);
 
     // Ensure required annotations with fallback logic
     if (!annotationsDict.ContainsKey("nginx.ingress.kubernetes.io/auth-tls-verify-client") ||
