@@ -1,12 +1,16 @@
 # Kubernetes Mutating Webhook for Ingress Client Certificate Authentication
 
-This repository contains a Kubernetes Mutating Webhook implementation that automatically adds client certificate authentication annotations to Ingress resources, ensuring that all ingresses in your cluster require client certificate authentication by default.
+This repository is retained for historical reference only.
+
+The active homelab direction is to use normal server-side TLS for `*.kub.lab` and not to inject ingress client-certificate authentication annotations automatically.
+
+Do not deploy this webhook in the current cluster baseline.
 
 ## What is a Mutating Webhook?
 
 A Mutating Webhook is a Kubernetes admission controller that intercepts requests to the Kubernetes API server and can modify the objects before they are stored. In this case, the webhook intercepts Ingress creation/update requests and adds the necessary NGINX annotations for client certificate authentication.
 
-## How it Works
+## Historical Behavior
 
 When a new Ingress resource is created or an existing one is updated, this webhook:
 
@@ -16,16 +20,9 @@ When a new Ingress resource is created or an existing one is updated, this webho
 4. If the skip annotation doesn't exist or is set to "false", it adds all required client certificate annotations
 5. Returns the modified Ingress object to the Kubernetes API server
 
-## Required Annotations
+## Historical Annotations
 
-The webhook enforces the following annotations:
-
-```
-nginx.ingress.kubernetes.io/auth-tls-verify-client: "on"
-nginx.ingress.kubernetes.io/auth-tls-secret: "default/ca-secret"
-nginx.ingress.kubernetes.io/auth-tls-verify-depth: "1"
-nginx.ingress.kubernetes.io/auth-tls-pass-certificate-to-upstream: "true"
-```
+The webhook historically enforced a fixed set of NGINX ingress client-certificate annotations.
 
 These annotations configure the NGINX Ingress Controller to:
 - Require client certificates
@@ -33,13 +30,9 @@ These annotations configure the NGINX Ingress Controller to:
 - Allow verification depth of 1 (client certificate signed directly by the CA)
 - Pass the client certificate to upstream services
 
-## How to Skip Client Certificate Authentication
+## Historical Skip Mechanism
 
-If you need to expose an Ingress publicly without client certificate authentication (for example, a public API endpoint or a registry), add the following annotation to your Ingress resource:
-
-```yaml
-k8s-mutating-webhook/skip-client-cert: "true"
-```
+If you needed to expose an Ingress publicly without client certificate authentication, you added a dedicated skip annotation understood by the webhook.
 
 When this annotation is set to "true":
 - If the Ingress already has client certificate annotations, they will be removed
@@ -47,30 +40,9 @@ When this annotation is set to "true":
 
 If this annotation is set to "false" or not present, all required client certificate annotations will be added automatically.
 
-Example Ingress with skip annotation:
+Example behavior: an ingress marked to bypass webhook mutation would remain on normal server-side TLS only.
 
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: public-api
-  annotations:
-    k8s-mutating-webhook/skip-client-cert: "true"
-spec:
-  rules:
-  - host: api.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: api-service
-            port:
-              number: 80
-```
-
-## Deployment
+## Historical Deployment
 
 ### Prerequisites
 
